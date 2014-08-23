@@ -1,0 +1,98 @@
+# build Newton-Raphson fractal
+#define: f(z)  the convergence per Newton's method is 
+# zn+1 = zn - f(zn)/f'(zn)
+#record which root each starting z0 converges to, 
+# and to get even nicer coloring, record the number of iterations to get there.
+
+# ToDo:
+#
+# Inputs:
+#	func: character string, including the variable. E.g., 'x+ 2*x^2' or 'sin(x)'
+#	varname: character string indicating the variable name
+#	zreal: vector(preferably) of Re(z)
+#	zim: vector of Im(z)
+#	rootprec: convergence precision for the NewtonRaphson algorithm
+#	maxiter: safety switch, maximum iterations, after which throw an error
+#
+nrfrac<-function(func='z^5 - 1 ', varname = 'z', zreal= seq(-5,5,by=.1), zim, rootprec=1.0e-5, maxiter=1e4, drawplot=T, drawiterplot=F, ...) {
+	zreal<-as.vector(zreal)
+	if(missing(zim)) zim <- as.vector(zreal)
+# precalculate F/F' 
+	# check for differentiability (in R's capability)
+	# and make sure to get the correct variable name into the function
+	func<- gsub(varname, 'zvar', func)
+	funcderiv<- try( D(parse(text=func), 'zvar') )
+	if(class(funcderiv) == 'try-error') stop("Can't calculate derivative")	
+# Interesting "feature" of deparse : default is to limit each string to 60 or64
+# chars.  Need to avoid that here.  Doubt I'd ever see a derivative w/ more
+# than 500 chars, the max allowed by deparse. To do it right, 
+# need sum(nchar(funcderiv)) as width, and even then need to do some sort of
+# paste(deparse(...),collapse='') to get a single string
+	nrfunc <- paste(text='(',func,')/(',deparse(funcderiv, width=500),')', collapse='')
+# first arg to outer()  will give rows
+# Stupid Bug: I need to REVERSE zim to get proper axis orientation
+	zstart<- outer(rev(zim*1i), zreal, "+")
+	zindex <- 1:(length(zreal)*length(zim))
+	zvec <- data.frame(zdata=as.vector(zstart), zindex=zindex, itermap=rep(0,length(zindex)), badroot=rep(0,length(zindex)), rooterr=rep(0,length(zindex)) )
+
+#initialize data.frame for zout.  
+	zout=data.frame(zdata=rep(NA,length(zstart)), zindex=rep(NA,length(zindex)), itermap=rep(0,length(zindex)), badroot=rep(0,length(zindex)), rooterr=rep(0,length(zindex)))
+	# a value for rounding purposes later on; yes it works for  rootprec >1 
+	logprec <-  -floor(log10(rootprec))
+	newtparam <- function(zvar) {}
+	body(newtparam)[2]  <- parse(text=paste('newz<-', nrfunc, collapse=''))
+	body(newtparam)[3] <- parse(text=paste('return(invisible(newz))'))
+	iter <- 1
+	zold <- zvec  # save zvec so I can return original values
+	zoutind <- 1 #initialize location to write solved values
+	while (iter <= maxiter & length(zold$zdata)>0 ) {
+		zold$rooterr <- newtparam(zold$zdata)
+		zold$zdata <- zold$zdata - zold$rooterr
+		rooterr <- abs(zold$rooterr)
+		zold$badroot[!is.finite(rooterr)] <- 1
+		zold$zdata[!is.finite(rooterr)] <- NA
+# what if solvind = FFFFFFF? -- can't write 'nothing' to zout
+		solvind <- (zold$badroot >0 | rooterr<rootprec)
+# can't I get rid of the 'if' ? 
+		if( sum(solvind)>0 ) zout[zoutind:(zoutind-1+sum(solvind)),] <- zold[solvind,]
+	#update zout index to next 'empty' row
+		zoutind<-zoutind + sum(solvind)
+# update the iter count for remaining elements:
+		zold$itermap <- iter
+# and reduce the size of the matrix being fed back to loop
+		zold<-zold[!solvind,]
+		iter <- iter +1
+	# just wonder if a gc() call here would make any difference
+# wow -- it sure does
+		gc()
+	}  # end of while
+# Now, there may be some nonconverged values, so:
+#  badroot[]  is set to 2  to distinguish from Inf/NaN locations
+		if( zoutind < length(zindex) ) { # there are nonconverged values
+#  fill the remaining rows, i.e. zout.index:length(zindex)
+			zout[(zoutind:length(zindex)),] <- zold # all of it
+			zold$badroot[] <- 2 # yes this is safe for length(badroot)==0
+			zold$zdata[]<-NA #keeps nonconverged values from messing up results
+			}
+#  be sure to properly re-order everything...
+	zout<-zout[order(zout$zindex),]
+	zout$zdata <- complex(re=round(Re(zout$zdata),logprec), im=round(Im(zout$zdata),logprec) )
+	rootvec <- factor(as.vector(zout$zdata), labels=c(1:length(unique(na.omit(as.vector(zout$zdata))))))
+	#convert from character, too!
+	rootIDmap<-matrix(as.numeric(rootvec), nr=length(zim))
+# later on, put in an option to draw the itermap, too:  drawiterplot
+# to colorize very simply:  
+	if(drawplot) {
+		 colorvec<-rainbow(length(unique(as.vector(rootIDmap))))
+		imagemat<-rootIDmap
+		imagemat[,]<-colorvec[imagemat]  #now has color strings
+		dev.new()
+# all '...' arguments used to set up plot
+		plot(range((zreal)),range((zim)), t='n',xlab='real',ylab='imaginary',... ) 
+		rasterImage(imagemat, range(zreal)[1], range(zim)[1], range(zreal)[2], range(zim)[2], interp=F)		
+		}
+	# review this new outs list- remember all the components of zout.
+	outs <- list(rootIDmap=rootIDmap, zvec=zvec, zout=zout, nrfunc=nrfunc)
+	return(invisible(outs))
+}
+
