@@ -7,4 +7,7 @@ I intend to put simple tools and various game-like functions I've written here. 
 1) simple image distortion tools to apply "swirls" or "wiggles" to an image
 2) Stuff not worth putting into one of the more clearly - named repositories.
 
-For the time being, at least, I'm not planning to migrate my CRAN packages here.
+Quick info:
+
+interpHyper:  a rewrite of e1071::interpolate to be faster (I think) and more robust. This interpolates data in N-space.
+newtonfractal:  generate fractal data by using Newton-Raphson iteration to find which root of (typically complex) a polynomial each point converges to.  Includes code to make pretty plots of the output. 
